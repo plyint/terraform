@@ -101,9 +101,10 @@ type resource struct {
 type attributeValues map[string]interface{}
 
 func marshalAttributeValues(value cty.Value, schema *configschema.Block) attributeValues {
-	if value == cty.NilVal {
+	if value == cty.NilVal || value.IsNull() {
 		return nil
 	}
+
 	ret := make(attributeValues)
 
 	it := value.ElementIterator()
@@ -273,7 +274,7 @@ func marshalResources(resources map[string]*states.Resource, schemas *terraform.
 			}
 
 			schema, _ := schemas.ResourceTypeConfig(
-				r.ProviderConfig.ProviderConfig.Type,
+				r.ProviderConfig.ProviderConfig.Type.LegacyString(),
 				r.Addr.Mode,
 				r.Addr.Type,
 			)

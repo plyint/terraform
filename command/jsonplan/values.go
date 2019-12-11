@@ -26,7 +26,7 @@ type stateValues struct {
 type attributeValues map[string]interface{}
 
 func marshalAttributeValues(value cty.Value, schema *configschema.Block) attributeValues {
-	if value == cty.NilVal {
+	if value == cty.NilVal || value.IsNull() {
 		return nil
 	}
 	ret := make(attributeValues)
@@ -181,7 +181,7 @@ func marshalPlanResources(changes *plans.Changes, ris []addrs.AbsResourceInstanc
 		}
 
 		schema, schemaVer := schemas.ResourceTypeConfig(
-			r.ProviderAddr.ProviderConfig.Type,
+			r.ProviderAddr.ProviderConfig.Type.LegacyString(),
 			r.Addr.Resource.Resource.Mode,
 			resource.Type,
 		)

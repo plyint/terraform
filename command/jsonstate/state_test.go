@@ -92,6 +92,18 @@ func TestMarshalAttributeValues(t *testing.T) {
 			nil,
 		},
 		{
+			cty.NullVal(cty.String),
+			&configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"foo": {
+						Type:     cty.String,
+						Optional: true,
+					},
+				},
+			},
+			nil,
+		},
+		{
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.StringVal("bar"),
 			}),
@@ -190,7 +202,7 @@ func TestMarshalResources(t *testing.T) {
 						},
 					},
 					ProviderConfig: addrs.ProviderConfig{
-						Type: "test",
+						Type: addrs.NewLegacyProvider("test"),
 					}.Absolute(addrs.RootModuleInstance),
 				},
 			},
@@ -233,7 +245,7 @@ func TestMarshalResources(t *testing.T) {
 						},
 					},
 					ProviderConfig: addrs.ProviderConfig{
-						Type: "test",
+						Type: addrs.NewLegacyProvider("test"),
 					}.Absolute(addrs.RootModuleInstance),
 				},
 			},
@@ -281,7 +293,7 @@ func TestMarshalResources(t *testing.T) {
 						},
 					},
 					ProviderConfig: addrs.ProviderConfig{
-						Type: "test",
+						Type: addrs.NewLegacyProvider("test"),
 					}.Absolute(addrs.RootModuleInstance),
 				},
 			},
