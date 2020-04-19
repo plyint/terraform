@@ -16,102 +16,69 @@ func TestParseAbsProviderConfig(t *testing.T) {
 		WantDiag string
 	}{
 		{
-			`provider.aws`,
+			`provider["registry.terraform.io/hashicorp/aws"]`,
 			AbsProviderConfig{
-				Module: RootModuleInstance,
-				ProviderConfig: ProviderConfig{
-					Type: NewLegacyProvider("aws"),
+				Module: RootModule,
+				Provider: Provider{
+					Type:      "aws",
+					Namespace: "hashicorp",
+					Hostname:  "registry.terraform.io",
 				},
 			},
 			``,
 		},
 		{
-			`provider.aws.foo`,
+			`provider["registry.terraform.io/hashicorp/aws"].foo`,
 			AbsProviderConfig{
-				Module: RootModuleInstance,
-				ProviderConfig: ProviderConfig{
-					Type:  NewLegacyProvider("aws"),
-					Alias: "foo",
+				Module: RootModule,
+				Provider: Provider{
+					Type:      "aws",
+					Namespace: "hashicorp",
+					Hostname:  "registry.terraform.io",
+				},
+				Alias: "foo",
+			},
+			``,
+		},
+		{
+			`module.baz.provider["registry.terraform.io/hashicorp/aws"]`,
+			AbsProviderConfig{
+				Module: Module{"baz"},
+				Provider: Provider{
+					Type:      "aws",
+					Namespace: "hashicorp",
+					Hostname:  "registry.terraform.io",
 				},
 			},
 			``,
 		},
 		{
-			`module.baz.provider.aws`,
+			`module.baz.provider["registry.terraform.io/hashicorp/aws"].foo`,
 			AbsProviderConfig{
-				Module: ModuleInstance{
-					{
-						Name: "baz",
-					},
+				Module: Module{"baz"},
+				Provider: Provider{
+					Type:      "aws",
+					Namespace: "hashicorp",
+					Hostname:  "registry.terraform.io",
 				},
-				ProviderConfig: ProviderConfig{
-					Type: NewLegacyProvider("aws"),
-				},
+				Alias: "foo",
 			},
 			``,
 		},
 		{
-			`module.baz.provider.aws.foo`,
-			AbsProviderConfig{
-				Module: ModuleInstance{
-					{
-						Name: "baz",
-					},
-				},
-				ProviderConfig: ProviderConfig{
-					Type:  NewLegacyProvider("aws"),
-					Alias: "foo",
-				},
-			},
-			``,
+			`module.baz["foo"].provider["registry.terraform.io/hashicorp/aws"]`,
+			AbsProviderConfig{},
+			`Provider address cannot contain module indexes`,
 		},
 		{
-			`module.baz["foo"].provider.aws`,
-			AbsProviderConfig{
-				Module: ModuleInstance{
-					{
-						Name:        "baz",
-						InstanceKey: StringKey("foo"),
-					},
-				},
-				ProviderConfig: ProviderConfig{
-					Type: NewLegacyProvider("aws"),
-				},
-			},
-			``,
+			`module.baz[1].provider["registry.terraform.io/hashicorp/aws"]`,
+			AbsProviderConfig{},
+			`Provider address cannot contain module indexes`,
 		},
 		{
-			`module.baz[1].provider.aws`,
-			AbsProviderConfig{
-				Module: ModuleInstance{
-					{
-						Name:        "baz",
-						InstanceKey: IntKey(1),
-					},
-				},
-				ProviderConfig: ProviderConfig{
-					Type: NewLegacyProvider("aws"),
-				},
-			},
-			``,
-		},
-		{
-			`module.baz[1].module.bar.provider.aws`,
-			AbsProviderConfig{
-				Module: ModuleInstance{
-					{
-						Name:        "baz",
-						InstanceKey: IntKey(1),
-					},
-					{
-						Name: "bar",
-					},
-				},
-				ProviderConfig: ProviderConfig{
-					Type: NewLegacyProvider("aws"),
-				},
-			},
-			``,
+			`module.baz[1].module.bar.provider["registry.terraform.io/hashicorp/aws"]`,
+			AbsProviderConfig{},
+			`Provider address cannot contain module indexes`,
 		},
 		{
 			`aws`,
@@ -134,12 +101,7 @@ func TestParseAbsProviderConfig(t *testing.T) {
 			`Extraneous operators after provider configuration alias.`,
 		},
 		{
-			`provider["aws"]`,
-			AbsProviderConfig{},
-			`The prefix "provider." must be followed by a provider type name.`,
-		},
-		{
-			`provider.aws["foo"]`,
+			`provider["aws"]["foo"]`,
 			AbsProviderConfig{},
 			`Provider type name must be followed by a configuration alias name.`,
 		},
@@ -149,9 +111,9 @@ func TestParseAbsProviderConfig(t *testing.T) {
 			`Provider address must begin with "provider.", followed by a provider type name.`,
 		},
 		{
-			`module.foo["provider"]`,
+			`provider[0]`,
 			AbsProviderConfig{},
-			`Provider address must begin with "provider.", followed by a provider type name.`,
+			`The prefix "provider." must be followed by a provider type name.`,
 		},
 	}
 
@@ -187,5 +149,95 @@ func TestParseAbsProviderConfig(t *testing.T) {
 				t.Error(problem)
 			}
 		})
+	}
+}
+
+func TestAbsProviderConfigString(t *testing.T) {
+	tests := []struct {
+		Config AbsProviderConfig
+		Want   string
+	}{
+		{
+			AbsProviderConfig{
+				Module:   RootModule,
+				Provider: NewLegacyProvider("foo"),
+			},
+			`provider["registry.terraform.io/-/foo"]`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule.Child("child_module"),
+				Provider: NewLegacyProvider("foo"),
+			},
+			`module.child_module.provider["registry.terraform.io/-/foo"]`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule,
+				Alias:    "bar",
+				Provider: NewLegacyProvider("foo"),
+			},
+			`provider["registry.terraform.io/-/foo"].bar`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule.Child("child_module"),
+				Alias:    "bar",
+				Provider: NewLegacyProvider("foo"),
+			},
+			`module.child_module.provider["registry.terraform.io/-/foo"].bar`,
+		},
+	}
+
+	for _, test := range tests {
+		got := test.Config.String()
+		if got != test.Want {
+			t.Errorf("wrong result. Got %s, want %s\n", got, test.Want)
+		}
+	}
+}
+
+func TestAbsProviderConfigLegacyString(t *testing.T) {
+	tests := []struct {
+		Config AbsProviderConfig
+		Want   string
+	}{
+		{
+			AbsProviderConfig{
+				Module:   RootModule,
+				Provider: NewLegacyProvider("foo"),
+			},
+			`provider.foo`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule.Child("child_module"),
+				Provider: NewLegacyProvider("foo"),
+			},
+			`module.child_module.provider.foo`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule,
+				Alias:    "bar",
+				Provider: NewLegacyProvider("foo"),
+			},
+			`provider.foo.bar`,
+		},
+		{
+			AbsProviderConfig{
+				Module:   RootModule.Child("child_module"),
+				Alias:    "bar",
+				Provider: NewLegacyProvider("foo"),
+			},
+			`module.child_module.provider.foo.bar`,
+		},
+	}
+
+	for _, test := range tests {
+		got := test.Config.LegacyString()
+		if got != test.Want {
+			t.Errorf("wrong result. Got %s, want %s\n", got, test.Want)
+		}
 	}
 }

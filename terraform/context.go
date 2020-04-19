@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/configs"
+	"github.com/hashicorp/terraform/instances"
 	"github.com/hashicorp/terraform/lang"
 	"github.com/hashicorp/terraform/plans"
 	"github.com/hashicorp/terraform/providers"
@@ -54,10 +55,10 @@ type ContextOpts struct {
 	Meta      *ContextMeta
 	Destroy   bool
 
-	Hooks            []Hook
-	Parallelism      int
-	ProviderResolver providers.Resolver
-	Provisioners     map[string]ProvisionerFactory
+	Hooks        []Hook
+	Parallelism  int
+	Providers    map[addrs.Provider]providers.Factory
+	Provisioners map[string]provisioners.Factory
 
 	// If non-nil, will apply as additional constraints on the provider
 	// plugins that will be requested from the provider resolver.
@@ -138,7 +139,17 @@ func NewContext(opts *ContextOpts) (*Context, tfdiags.Diagnostics) {
 	// Determine parallelism, default to 10. We do this both to limit
 	// CPU pressure but also to have an extra guard against rate throttling
 	// from providers.
+	// We throw an error in case of negative parallelism
 	par := opts.Parallelism
+	if par < 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Invalid parallelism value",
+			fmt.Sprintf("The parallelism must be a positive value. Not %d.", par),
+		))
+		return nil, diags
+	}
+
 	if par == 0 {
 		par = 10
 	}
@@ -158,28 +169,8 @@ func NewContext(opts *ContextOpts) (*Context, tfdiags.Diagnostics) {
 	// override the defaults.
 	variables = variables.Override(opts.Variables)
 
-	// Bind available provider plugins to the constraints in config
-	var providerFactories map[addrs.Provider]providers.Factory
-	if opts.ProviderResolver != nil {
-		deps := ConfigTreeDependencies(opts.Config, state)
-		reqd := deps.AllPluginRequirements()
-		if opts.ProviderSHA256s != nil && !opts.SkipProviderVerify {
-			reqd.LockExecutables(opts.ProviderSHA256s)
-		}
-		log.Printf("[TRACE] terraform.NewContext: resolving provider version selections")
-		var providerDiags tfdiags.Diagnostics
-		providerFactories, providerDiags = resourceProviderFactories(opts.ProviderResolver, reqd)
-		diags = diags.Append(providerDiags)
-
-		if diags.HasErrors() {
-			return nil, diags
-		}
-	} else {
-		providerFactories = make(map[addrs.Provider]providers.Factory)
-	}
-
 	components := &basicComponentFactory{
-		providers:    providerFactories,
+		providers:    opts.Providers,
 		provisioners: opts.Provisioners,
 	}
 
@@ -778,6 +769,7 @@ func (c *Context) graphWalker(operation walkOperation) *ContextGraphWalker {
 		Context:            c,
 		State:              c.state.SyncWrapper(),
 		Changes:            c.changes.SyncWrapper(),
+		InstanceExpander:   instances.NewExpander(),
 		Operation:          operation,
 		StopContext:        c.runContext,
 		RootVariableValues: c.variables,

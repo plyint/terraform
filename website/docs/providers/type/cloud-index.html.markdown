@@ -18,6 +18,7 @@ vendor in close collaboration with HashiCorp, and are tested by HashiCorp.
 
 
 - [Arukas](/docs/providers/arukas/index.html)
+- [BaiduCloud](/docs/providers/baiducloud/index.html)
 - [Brightbox](/docs/providers/brightbox/index.html)
 - [CenturyLinkCloud](/docs/providers/clc/index.html)
 - [CherryServers](/docs/providers/cherryservers/index.html)
@@ -36,6 +37,7 @@ vendor in close collaboration with HashiCorp, and are tested by HashiCorp.
 - [HuaweiCloudStack](/docs/providers/huaweicloudstack/index.html)
 - [JDCloud](/docs/providers/jdcloud/index.html)
 - [Linode](/docs/providers/linode/index.html)
+- [MetalCloud](/docs/providers/metalcloud/index.html)
 - [Naver Cloud](/docs/providers/ncloud/index.html)
 - [Nutanix](/docs/providers/nutanix/index.html)
 - [OpenNebula](/docs/providers/opennebula/index.html)
@@ -54,5 +56,5 @@ vendor in close collaboration with HashiCorp, and are tested by HashiCorp.
 - [Triton](/docs/providers/triton/index.html)
 - [UCloud](/docs/providers/ucloud/index.html)
 - [Vultr](/docs/providers/vultr/index.html)
-- [Yandex](/docs/providers/yandex/index.html)
+- [Yandex.Cloud](/docs/providers/yandex/index.html)
 - [1&1](/docs/providers/oneandone/index.html)

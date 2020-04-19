@@ -8,40 +8,36 @@ import (
 	"github.com/hashicorp/terraform/addrs"
 )
 
-func TestAddressedTypes(t *testing.T) {
-	providerAddrs := []addrs.ProviderConfig{
-		{Type: addrs.NewLegacyProvider("aws")},
-		{Type: addrs.NewLegacyProvider("aws"), Alias: "foo"},
-		{Type: addrs.NewLegacyProvider("azure")},
-		{Type: addrs.NewLegacyProvider("null")},
-		{Type: addrs.NewLegacyProvider("null")},
-	}
-
-	got := AddressedTypes(providerAddrs)
-	want := []string{
-		"aws",
-		"azure",
-		"null",
-	}
-	for _, problem := range deep.Equal(got, want) {
-		t.Error(problem)
-	}
-}
-
 func TestAddressedTypesAbs(t *testing.T) {
 	providerAddrs := []addrs.AbsProviderConfig{
-		addrs.ProviderConfig{Type: addrs.NewLegacyProvider("aws")}.Absolute(addrs.RootModuleInstance),
-		addrs.ProviderConfig{Type: addrs.NewLegacyProvider("aws"), Alias: "foo"}.Absolute(addrs.RootModuleInstance),
-		addrs.ProviderConfig{Type: addrs.NewLegacyProvider("azure")}.Absolute(addrs.RootModuleInstance),
-		addrs.ProviderConfig{Type: addrs.NewLegacyProvider("null")}.Absolute(addrs.RootModuleInstance),
-		addrs.ProviderConfig{Type: addrs.NewLegacyProvider("null")}.Absolute(addrs.RootModuleInstance),
+		addrs.AbsProviderConfig{
+			Module:   addrs.RootModule,
+			Provider: addrs.NewLegacyProvider("aws"),
+		},
+		addrs.AbsProviderConfig{
+			Module:   addrs.RootModule,
+			Provider: addrs.NewLegacyProvider("aws"),
+			Alias:    "foo",
+		},
+		addrs.AbsProviderConfig{
+			Module:   addrs.RootModule,
+			Provider: addrs.NewLegacyProvider("azure"),
+		},
+		addrs.AbsProviderConfig{
+			Module:   addrs.RootModule,
+			Provider: addrs.NewLegacyProvider("null"),
+		},
+		addrs.AbsProviderConfig{
+			Module:   addrs.RootModule,
+			Provider: addrs.NewLegacyProvider("null"),
+		},
 	}
 
 	got := AddressedTypesAbs(providerAddrs)
-	want := []string{
-		"aws",
-		"azure",
-		"null",
+	want := []addrs.Provider{
+		addrs.NewLegacyProvider("aws"),
+		addrs.NewLegacyProvider("azure"),
+		addrs.NewLegacyProvider("null"),
 	}
 	for _, problem := range deep.Equal(got, want) {
 		t.Error(problem)

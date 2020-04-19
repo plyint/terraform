@@ -2,6 +2,7 @@ package command
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -41,7 +42,9 @@ func TestShow(t *testing.T) {
 func TestShow_noArgs(t *testing.T) {
 	// Create the default state
 	statePath := testStateFile(t, testState())
-	defer testChdir(t, filepath.Dir(statePath))()
+	stateDir := filepath.Dir(statePath)
+	defer os.RemoveAll(stateDir)
+	defer testChdir(t, stateDir)()
 
 	ui := new(cli.MockUi)
 	c := &ShowCommand{
@@ -51,16 +54,73 @@ func TestShow_noArgs(t *testing.T) {
 		},
 	}
 
-	args := []string{}
+	// the statefile created by testStateFile is named state.tfstate
+	// so one arg is required
+	args := []string{"state.tfstate"}
 	if code := c.Run(args); code != 0 {
 		t.Fatalf("bad: \n%s", ui.OutputWriter.String())
+	}
+
+	if !strings.Contains(ui.OutputWriter.String(), "# test_instance.foo:") {
+		t.Fatalf("bad: \n%s", ui.ErrorWriter.String())
+	}
+}
+
+// https://github.com/hashicorp/terraform/issues/21462
+func TestShow_aliasedProvider(t *testing.T) {
+	// Create the default state with aliased resource
+	testState := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				// The weird whitespace here is reflective of how this would
+				// get written out in a real state file, due to the indentation
+				// of all of the containing wrapping objects and arrays.
+				AttrsJSON:    []byte("{\n            \"id\": \"bar\"\n          }"),
+				Status:       states.ObjectReady,
+				Dependencies: []addrs.ConfigResource{},
+				DependsOn:    []addrs.Referenceable{},
+			},
+			addrs.RootModuleInstance.ProviderConfigAliased(addrs.NewDefaultProvider("test"), "alias"),
+		)
+	})
+
+	statePath := testStateFile(t, testState)
+	stateDir := filepath.Dir(statePath)
+	defer os.RemoveAll(stateDir)
+	defer testChdir(t, stateDir)()
+
+	ui := new(cli.MockUi)
+	c := &ShowCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			Ui:               ui,
+		},
+	}
+
+	fmt.Println(os.Getwd())
+
+	// the statefile created by testStateFile is named state.tfstate
+	args := []string{"state.tfstate"}
+	if code := c.Run(args); code != 0 {
+		t.Fatalf("bad exit code: \n%s", ui.OutputWriter.String())
+	}
+
+	if strings.Contains(ui.OutputWriter.String(), "# missing schema for provider \"test.alias\"") {
+		t.Fatalf("bad output: \n%s", ui.OutputWriter.String())
 	}
 }
 
 func TestShow_noArgsNoState(t *testing.T) {
 	// Create the default state
 	statePath := testStateFile(t, testState())
-	defer testChdir(t, filepath.Dir(statePath))()
+	stateDir := filepath.Dir(statePath)
+	defer os.RemoveAll(stateDir)
+	defer testChdir(t, stateDir)()
 
 	ui := new(cli.MockUi)
 	c := &ShowCommand{
@@ -70,7 +130,8 @@ func TestShow_noArgsNoState(t *testing.T) {
 		},
 	}
 
-	args := []string{}
+	// the statefile created by testStateFile is named state.tfstate
+	args := []string{"state.tfstate"}
 	if code := c.Run(args); code != 0 {
 		t.Fatalf("bad: \n%s", ui.OutputWriter.String())
 	}
@@ -150,6 +211,7 @@ func TestShow_plan_json(t *testing.T) {
 func TestShow_state(t *testing.T) {
 	originalState := testState()
 	statePath := testStateFile(t, originalState)
+	defer os.RemoveAll(filepath.Dir(statePath))
 
 	ui := new(cli.MockUi)
 	c := &ShowCommand{
@@ -188,22 +250,22 @@ func TestShow_json_output(t *testing.T) {
 
 			expectError := strings.Contains(entry.Name(), "error")
 
+			providerSource, close := newMockProviderSource(t, map[string][]string{
+				"test": []string{"1.2.3"},
+			})
+			defer close()
+
 			p := showFixtureProvider()
 			ui := new(cli.MockUi)
 			m := Meta{
 				testingOverrides: metaOverridesForProvider(p),
 				Ui:               ui,
+				ProviderSource:   providerSource,
 			}
 
 			// init
 			ic := &InitCommand{
 				Meta: m,
-				providerInstaller: &mockProviderInstaller{
-					Providers: map[string][]string{
-						"test": []string{"1.2.3"},
-					},
-					Dir: m.pluginDir(),
-				},
 			}
 			if code := ic.Run([]string{}); code != 0 {
 				if expectError {
@@ -261,9 +323,7 @@ func TestShow_json_output(t *testing.T) {
 			if !cmp.Equal(got, want) {
 				t.Fatalf("wrong result:\n %v\n", cmp.Diff(got, want))
 			}
-
 		})
-
 	}
 }
 
@@ -287,22 +347,22 @@ func TestShow_json_output_state(t *testing.T) {
 			defer os.RemoveAll(td)
 			defer testChdir(t, td)()
 
+			providerSource, close := newMockProviderSource(t, map[string][]string{
+				"test": []string{"1.2.3"},
+			})
+			defer close()
+
 			p := showFixtureProvider()
 			ui := new(cli.MockUi)
 			m := Meta{
 				testingOverrides: metaOverridesForProvider(p),
 				Ui:               ui,
+				ProviderSource:   providerSource,
 			}
 
 			// init
 			ic := &InitCommand{
 				Meta: m,
-				providerInstaller: &mockProviderInstaller{
-					Providers: map[string][]string{
-						"test": []string{"1.2.3"},
-					},
-					Dir: m.pluginDir(),
-				},
 			}
 			if code := ic.Run([]string{}); code != 0 {
 				t.Fatalf("init failed\n%s", ui.ErrorWriter)
@@ -343,9 +403,7 @@ func TestShow_json_output_state(t *testing.T) {
 			if !cmp.Equal(got, want) {
 				t.Fatalf("wrong result:\n %v\n", cmp.Diff(got, want))
 			}
-
 		})
-
 	}
 }
 
@@ -427,7 +485,10 @@ func showFixturePlanFile(t *testing.T, action plans.Action) string {
 			Type: "test_instance",
 			Name: "foo",
 		}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
-		ProviderAddr: addrs.ProviderConfig{Type: addrs.NewLegacyProvider("test")}.Absolute(addrs.RootModuleInstance),
+		ProviderAddr: addrs.AbsProviderConfig{
+			Provider: addrs.NewDefaultProvider("test"),
+			Module:   addrs.RootModule,
+		},
 		ChangeSrc: plans.ChangeSrc{
 			Action: action,
 			Before: priorValRaw,

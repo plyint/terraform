@@ -87,7 +87,7 @@ func (b *EvalGraphBuilder) Steps() []GraphTransformer {
 
 		// Must attach schemas before ReferenceTransformer so that we can
 		// analyze the configuration to find references.
-		&AttachSchemaTransformer{Schemas: b.Schemas},
+		&AttachSchemaTransformer{Schemas: b.Schemas, Config: b.Config},
 
 		// Connect so that the references are ready for targeting. We'll
 		// have to connect again later for providers and so on.
@@ -97,8 +97,8 @@ func (b *EvalGraphBuilder) Steps() []GraphTransformer {
 		// to get their schemas, and so we must shut them down again here.
 		&CloseProviderTransformer{},
 
-		// Single root
-		&RootTransformer{},
+		// Close root module
+		&CloseRootModuleTransformer{},
 
 		// Remove redundant edges to simplify the graph.
 		&TransitiveReductionTransformer{},

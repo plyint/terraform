@@ -18,11 +18,7 @@ type StateMvCommand struct {
 }
 
 func (c *StateMvCommand) Run(args []string) int {
-	args, err := c.Meta.process(args, true)
-	if err != nil {
-		return 1
-	}
-
+	args = c.Meta.process(args)
 	// We create two metas to track the two states
 	var backupPathOut, statePathOut string
 
@@ -226,7 +222,7 @@ func (c *StateMvCommand) Run(args []string) int {
 				ssFrom.RemoveResource(addrFrom)
 
 				// Update the address before adding it to the state.
-				rs.Addr = addrTo.Resource
+				rs.Addr = addrTo
 				stateTo.Module(addrTo.Module).Resources[addrTo.Resource.String()] = rs
 			}
 
@@ -280,9 +276,12 @@ func (c *StateMvCommand) Run(args []string) int {
 				fromResourceAddr := addrFrom.ContainingResource()
 				fromResource := ssFrom.Resource(fromResourceAddr)
 				fromProviderAddr := fromResource.ProviderConfig
-				fromEachMode := fromResource.EachMode
 				ssFrom.ForgetResourceInstanceAll(addrFrom)
 				ssFrom.RemoveResourceIfEmpty(fromResourceAddr)
+
+				// since this is moving an instance, we can infer the target
+				// mode from the address.
+				toEachMode := eachModeForInstanceKey(addrTo.Resource.Key)
 
 				rs := stateTo.Resource(addrTo.ContainingResource())
 				if rs == nil {
@@ -290,21 +289,17 @@ func (c *StateMvCommand) Run(args []string) int {
 					// suggests the user's intent is to establish both the
 					// resource and the instance at the same time (since the
 					// address covers both). If there's an index in the
-					// target then allow creating the new instance here,
-					// inferring the mode from how the new address was parsed.
-					if addrTo.Resource.Key != addrs.NoKey {
-						fromEachMode = eachModeForInstanceKey(addrTo.Resource.Key)
-					}
-
+					// target then allow creating the new instance here.
 					resourceAddr := addrTo.ContainingResource()
 					stateTo.SyncWrapper().SetResourceMeta(
 						resourceAddr,
-						fromEachMode,
+						toEachMode,
 						fromProviderAddr, // in this case, we bring the provider along as if we were moving the whole resource
 					)
 					rs = stateTo.Resource(resourceAddr)
 				}
 
+				rs.EachMode = toEachMode
 				rs.Instances[addrTo.Resource.Key] = is
 			}
 		default:
@@ -313,6 +308,28 @@ func (c *StateMvCommand) Run(args []string) int {
 				msgInvalidSource,
 				fmt.Sprintf("Cannot move %s: Terraform doesn't know how to move this object.", rawAddrFrom),
 			))
+		}
+
+		// Look for any dependencies that may be effected and
+		// remove them to ensure they are recreated in full.
+		for _, mod := range stateTo.Modules {
+			for _, res := range mod.Resources {
+				for _, ins := range res.Instances {
+					if ins.Current == nil {
+						continue
+					}
+
+					for _, dep := range ins.Current.Dependencies {
+						// check both directions here, since we may be moving
+						// an instance which is in a resource, or a module
+						// which can contain a resource.
+						if dep.TargetContains(rawAddrFrom) || rawAddrFrom.TargetContains(dep) {
+							ins.Current.Dependencies = nil
+							break
+						}
+					}
+				}
+			}
 		}
 	}
 

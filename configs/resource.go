@@ -20,6 +20,7 @@ type Resource struct {
 	ForEach hcl.Expression
 
 	ProviderConfigRef *ProviderConfigRef
+	Provider          addrs.Provider
 
 	DependsOn []hcl.Traversal
 
@@ -60,18 +61,19 @@ func (r *Resource) Addr() addrs.Resource {
 	}
 }
 
-// ProviderConfigAddr returns the address for the provider configuration
-// that should be used for this resource. This function implements the
-// default behavior of extracting the type from the resource type name if
-// an explicit "provider" argument was not provided.
-func (r *Resource) ProviderConfigAddr() addrs.ProviderConfig {
+// ProviderConfigAddr returns the address for the provider configuration that
+// should be used for this resource. This function returns a default provider
+// config addr if an explicit "provider" argument was not provided.
+func (r *Resource) ProviderConfigAddr() addrs.LocalProviderConfig {
 	if r.ProviderConfigRef == nil {
-		return r.Addr().DefaultProviderConfig()
+		return addrs.LocalProviderConfig{
+			LocalName: r.Provider.Type,
+		}
 	}
 
-	return addrs.ProviderConfig{
-		Type:  addrs.NewLegacyProvider(r.ProviderConfigRef.Name),
-		Alias: r.ProviderConfigRef.Alias,
+	return addrs.LocalProviderConfig{
+		LocalName: r.ProviderConfigRef.Name,
+		Alias:     r.ProviderConfigRef.Alias,
 	}
 }
 
@@ -445,10 +447,10 @@ func decodeProviderConfigRef(expr hcl.Expression, argName string) (*ProviderConf
 //
 // This is a trivial conversion, essentially just discarding the source
 // location information and keeping just the addressing information.
-func (r *ProviderConfigRef) Addr() addrs.ProviderConfig {
-	return addrs.ProviderConfig{
-		Type:  addrs.NewLegacyProvider(r.Name),
-		Alias: r.Alias,
+func (r *ProviderConfigRef) Addr() addrs.LocalProviderConfig {
+	return addrs.LocalProviderConfig{
+		LocalName: r.Name,
+		Alias:     r.Alias,
 	}
 }
 

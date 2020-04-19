@@ -6,6 +6,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/hashicorp/terraform/addrs"
+	"github.com/hashicorp/terraform/internal/getproviders"
 )
 
 // State is the top-level type of a Terraform state.
@@ -70,6 +71,17 @@ func (s *State) Module(addr addrs.ModuleInstance) *Module {
 	return s.Modules[addr.String()]
 }
 
+// ModuleInstances returns the set of Module states that matches the given path.
+func (s *State) ModuleInstances(addr addrs.Module) []*Module {
+	var ms []*Module
+	for _, m := range s.Modules {
+		if m.Addr.Module().Equal(addr) {
+			ms = append(ms, m)
+		}
+	}
+	return ms
+}
+
 // RemoveModule removes the module with the given address from the state,
 // unless it is the root module. The root module cannot be deleted, and so
 // this method will panic if that is attempted.
@@ -131,6 +143,18 @@ func (s *State) Resource(addr addrs.AbsResource) *Resource {
 		return nil
 	}
 	return ms.Resource(addr.Resource)
+}
+
+// Resources returns the set of resources that match the given configuration path.
+func (s *State) Resources(addr addrs.ConfigResource) []*Resource {
+	var ret []*Resource
+	for _, m := range s.ModuleInstances(addr.Module) {
+		r := m.Resource(addr.Resource)
+		if r != nil {
+			ret = append(ret, r)
+		}
+	}
+	return ret
 }
 
 // ResourceInstance returns the state for the resource instance with the given
@@ -197,6 +221,22 @@ func (s *State) ProviderAddrs() []addrs.AbsProviderConfig {
 		ret[i] = m[key]
 	}
 
+	return ret
+}
+
+// ProviderRequirements returns a description of all of the providers that
+// are required to work with the receiving state.
+//
+// Because the state does not track specific version information for providers,
+// the requirements returned by this method will always be unconstrained.
+// The result should usually be merged with a Requirements derived from the
+// current configuration in order to apply some constraints.
+func (s *State) ProviderRequirements() getproviders.Requirements {
+	configAddrs := s.ProviderAddrs()
+	ret := make(getproviders.Requirements, len(configAddrs))
+	for _, configAddr := range configAddrs {
+		ret[configAddr.Provider] = nil // unconstrained dependency
+	}
 	return ret
 }
 
